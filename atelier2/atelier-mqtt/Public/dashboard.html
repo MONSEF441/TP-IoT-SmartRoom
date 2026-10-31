@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Smart Room IoT - Multi-Device</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #eef2f7;
+      text-align: center;
+      padding: 30px;
+      margin: 0;
+    }
+    .grid-container {
+      display: flex;
+      justify-content: center;
+      gap: 30px;
+      flex-wrap: wrap;
+      margin-top: 20px;
+    }
+    .esp-section {
+      background: #ffffff;
+      border-radius: 16px;
+      padding: 20px 25px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+      width: 380px;
+    }
+    .esp-section h2 {
+      margin-top: 0;
+      color: #333;
+      font-size: 1.3rem;
+      border-bottom: 2px solid #eef2f7;
+      padding-bottom: 10px;
+    }
+    .dashboard {
+      display: flex;
+      justify-content: space-around;
+      gap: 15px;
+      margin: 15px 0;
+    }
+    .card {
+      background: #f8fafc;
+      padding: 15px;
+      border-radius: 12px;
+      flex: 1;
+      border: 1px solid #e2e8f0;
+    }
+    .card h3 {
+      margin: 0 0 10px 0;
+      font-size: 0.95rem;
+      color: #64748b;
+    }
+    .value {
+      font-size: 32px;
+      font-weight: bold;
+      color: #1e293b;
+    }
+    .meta-info {
+      font-size: 0.85rem;
+      color: #64748b;
+      margin: 5px 0 0;
+    }
+    #status {
+      font-weight: bold;
+      color: #64748b;
+    }
+    .alert-box {
+      margin: 20px auto;
+      max-width: 600px;
+      padding: 12px;
+      border-radius: 8px;
+      background-color: #fee2e2;
+      color: #b91c1c;
+      border: 1px solid #f87171;
+      font-weight: bold;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h1>Smart Room IoT Dashboard</h1>
+  <p id="status">Connexion au serveur...</p>
+  <div id="alert" class="alert-box" hidden></div>
+
+  <div class="grid-container">
+    <!-- ESP32_01 : Salle TP1 -->
+    <div class="esp-section">
+      <h2>Salle TP1 (ESP32_01)</h2>
+      <div class="dashboard">
+        <div class="card">
+          <h3>Température</h3>
+          <span class="value" id="temp-ESP32_01">--</span> °C
+        </div>
+        <div class="card">
+          <h3>Humidité</h3>
+          <span class="value" id="hum-ESP32_01">--</span> %
+        </div>
+      </div>
+      <p class="meta-info">Dernière mise à jour : <span id="time-ESP32_01">--</span></p>
+    </div>
+
+    <!-- ESP32_02 : Salle TP2 -->
+    <div class="esp-section">
+      <h2>Salle TP2 (ESP32_02)</h2>
+      <div class="dashboard">
+        <div class="card">
+          <h3>Température</h3>
+          <span class="value" id="temp-ESP32_02">--</span> °C
+        </div>
+        <div class="card">
+          <h3>Humidité</h3>
+          <span class="value" id="hum-ESP32_02">--</span> %
+        </div>
+      </div>
+      <p class="meta-info">Dernière mise à jour : <span id="time-ESP32_02">--</span></p>
+    </div>
+  </div>
+
+  <script>
+    const socket = io();
+
+    // État de la connexion Socket.IO
+    socket.on("connect", () => {
+      const status = document.getElementById("status");
+      status.textContent = "Connecté au serveur";
+      status.style.color = "#16a34a";
+    });
+
+    socket.on("disconnect", () => {
+      const status = document.getElementById("status");
+      status.textContent = "Serveur déconnecté";
+      status.style.color = "#dc2626";
+    });
+
+    // Mise à jour ciblée selon l'appareil
+    function displayMeasurement(data) {
+      if (!data || !data.device_id) return;
+
+      const id = data.device_id;
+      const tempElem = document.getElementById(`temp-${id}`);
+      const humElem = document.getElementById(`hum-${id}`);
+      const timeElem = document.getElementById(`time-${id}`);
+
+      if (tempElem && data.temperature !== undefined) {
+        tempElem.textContent = Number(data.temperature).toFixed(1);
+      }
+      if (humElem && data.humidity !== undefined) {
+        humElem.textContent = Number(data.humidity).toFixed(1);
+      }
+      if (timeElem) {
+        const date = data.receivedAt ? new Date(data.receivedAt) : new Date();
+        timeElem.textContent = date.toLocaleTimeString("fr-FR");
+      }
+    }
+
+    // Événements en temps réel
+    socket.on("newMeasurement", displayMeasurement);
+
+    socket.on("temperatureAlert", data => {
+      const alertBox = document.getElementById("alert");
+      alertBox.hidden = false;
+      alertBox.textContent = `⚠ ALERTE [${data.device_id || 'ESP32'}] : Température critique (${Number(data.temperature).toFixed(1)} °C)`;
+      
+      // Masquer l'alerte automatiquement après 8 secondes
+      setTimeout(() => { alertBox.hidden = true; }, 8000);
+    });
+
+    // Récupération initiale des dernières mesures au chargement
+    fetch("/api/measurements/latest")
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          data.forEach(displayMeasurement);
+        } else if (data) {
+          displayMeasurement(data);
+        }
+      })
+      .catch(err => console.log("Pas de données initiales :", err));
+  </script>
+</body>
+</html>
